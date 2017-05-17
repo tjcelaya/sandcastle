@@ -1,0 +1,17 @@
+FROM sc-server
+
+
+# RUN docker-php-source extract
+RUN pecl install xdebug redis
+RUN docker-php-ext-enable xdebug
+# RUN docker-php-source delete
+
+RUN echo '\n\
+xdebug.remote_enable=1\n\
+xdebug.remote_autostart=1\n\
+xdebug.remote_host=dockerhost\n\
+xdebug.remote_port=9001\n\
+xdebug.remote_connect_back=0\n\
+xdebug.idekey=PHPSTORM\n\
+xdebug.remote_log="/tmp/xdebug.log"\n\
+' >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini

@@ -1,0 +1,127 @@
+version: "3"
+services:
+
+  # custom images
+
+  server-build:
+    build: ops/server
+    image: sc-server
+
+  server-dbg-build:
+    build:
+      context: ops/server
+      dockerfile: Dockerfile-xdebug
+    image: sc-server-dbg
+
+  # services
+
+  nginx: &def-nginx
+    image: nginx
+    links:
+      - test_fpm:fpm
+    ports:
+      - 8080:80
+    volumes:
+      - $SC_ROOT_DIR/server:/app
+      - $SC_ROOT_DIR/ops/site.conf:/etc/nginx/conf.d/default.conf
+      - $SC_ROOT_DIR/ops/fpm.conf:/etc/nginx/fpm
+
+  test_nginx:
+    <<: *def-nginx
+    links:
+      - test_fpm:fpm
+    volumes:
+      - $SC_ROOT_DIR/server:/app
+      - $SC_ROOT_DIR/ops/site-testing.conf:/etc/nginx/conf.d/default.conf
+      - $SC_ROOT_DIR/ops/fpm.conf:/etc/nginx/fpm
+
+  db:
+    image: percona
+    volumes:
+      - $SC_ROOT_DIR/ops/mysql:/etc/mysql/conf.d
+      - $SC_ROOT_DIR/ops/bootstrap.sql:/docker-entrypoint-initdb.d/bootstrap.sql
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_DATABASE: sc
+
+  # FIXME: the db-reset-to-bootstrap make target depends explicitly on this hostname.
+  test_db:
+    image: percona
+    ports:
+      - 33306:3306
+    volumes:
+      - $SC_ROOT_DIR/ops/bootstrap.sql:/docker-entrypoint-initdb.d/bootstrap.sql
+    environment:
+      MYSQL_ROOT_PASSWORD: test_secret
+      MYSQL_DATABASE: test_sc
+    healthcheck:
+      test: mysql -uroot -ptest_secret test_sc -e'select 1'
+
+  # commands
+
+  cli: 
+    image: sc-server
+    # cli default command mimics nginx+phpfpm, watch out for ports
+    command: php artisan serve --port=8080 --host=0.0.0.0
+    ports:
+      - 8080:8080
+    links:
+      - db
+    volumes:
+      - $SC_ROOT_DIR/server:/app
+    extra_hosts:
+      - "dockerhost:192.168.1.92"
+
+  composer:
+    image: composer
+    volumes:
+      - $SC_ROOT_DIR/server:/app
+      - $COMPOSER_HOME:/composer  # comment this line to disable caching
+
+  test: &def-test
+    image: sc-server
+    command: php vendor/bin/phpunit
+    links:
+      - test_db
+    volumes:
+      - $SC_ROOT_DIR/server:/app
+    environment:
+      APP_ENV: testing
+
+  ftest: &def-ftest
+    <<: *def-test
+    command: php vendor/bin/phpunit --stop-on-error --stop-on-failure
+
+  xtest: &def-xtest
+    <<: *def-ftest
+    image: sc-server-dbg
+    extra_hosts:
+      - "dockerhost:192.168.1.92"
+    environment:
+      APP_ENV: testing
+      PHP_IDE_CONFIG: "serverName=api.sc.testing"
+    volumes:
+      - $SC_ROOT_DIR/server:/app
+      - $SC_ROOT_DIR/ops/xdebug.log:/tmp/xdebug.log
+
+  fpm:
+    image: sc-server
+    links:
+      - db
+    volumes:
+      - $SC_ROOT_DIR/server:/app
+      - $SC_ROOT_DIR/ops/xdebug.log:/tmp/xdebug.log
+
+  test_fpm:
+    <<: *def-xtest
+    command: php-fpm
+    links:
+      - test_db
+
+  await_test_db:
+    image: gophernet/netcat
+    entrypoint: sh -c 'echo -n waiting; until nc -z test_db 3306; do sleep 1; echo -n .; done'
+    links:
+      - test_db

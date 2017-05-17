@@ -1,0 +1,7 @@
+.DS_Store
+/nbproject/private/
+ops/xdebug.log
+server/.env
+server/vendor
+secret/
+.idea
