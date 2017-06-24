@@ -2,6 +2,8 @@
 
 Laravel 5.4, Dingo API, JWT Auth, some sweet Dockerfiles. Rapid testing = rapid development.
 
+Docker automation depends on the `$SC_ROOT_DIR` environment variable. Usage is primarily restricted to `docker-compose.yml` and can be tweaked from `.env`
+
 ## Overview
 
 ### Terms
